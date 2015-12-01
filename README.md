@@ -1,9 +1,10 @@
 # stream to redis
 
-two transforms to read/write from redis.
+two transforms to write/pull from redis.
 
-It s not data streaming to redis `key`, it s transforms
-to read and write into redis as a queue.
+It s not data streaming to redis `key`.
+
+It s transforms to read and write into redis as a queue.
 
 # Install
 
@@ -14,7 +15,7 @@ to read and write into redis as a queue.
 ```js
 var through2  = require('through2');
 var debug     = require('debug')('stream-to-redis');
-var redis     = require('./index');
+var redis     = require('steam-to-redis');
 
 var s1 = through2.obj();
 s1.resume();
@@ -32,3 +33,10 @@ process.on('SIGINT', function() {
   s2.end();
 })
 ```
+
+# read more
+
+- http://redis.io/commands
+- http://www.rediscookbook.org/
+- https://github.com/NodeRedis/node_redis
+- https://github.com/jeffbski/redis-wstream
