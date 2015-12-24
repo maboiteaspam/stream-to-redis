@@ -1,10 +1,18 @@
 {
   "name": "stream-to-redis",
   "version": "1.0.0",
-  "description": "write then pullfrom redis with a stream interface",
+  "description": "write then pull from redis with a stream interface",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dcheck": "npm outdated --depth=0",
+    "patch": "npm version patch -m \"patch %s\"",
+    "minor": "npm version minor -m \"minor %s\"",
+    "major": "npm version major -m \"major %s\"",
+    "preversion": "echo \"npm test: not defined\" && npi --explicit",
+    "version": "echo \"npm run build: not defined\"",
+    "postversion": "git push && git push --tags",
+    "public": "npm publish --access=public"
   },
   "keywords": [],
   "author": "maboiteaspam",
@@ -12,6 +20,7 @@
   "dependencies": {
     "async": "^1.5.0",
     "debug": "^2.2.0",
+    "noms": "0.0.0",
     "redis": "^2.4.2",
     "through2": "^2.0.0"
   }

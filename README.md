@@ -28,9 +28,18 @@ for (var i=0;i<1000;i++){
   s1.write("message "+i+"\n")
 }
 
+s2.on('end', function () {
+  debug('end of read')
+  s1.end();
+  //s2.end(); // you may call .end() on a redis-readable to
+  // close the connection and end the stream.
+  // if you have not passed infinite: true opt to the stream,
+  // it will close when all data of the channel was processed
+})
+
 process.on('SIGINT', function() {
   s1.end();
-  s2.end();
+  s2.end(); // close the underlying redis connection
 })
 ```
 
