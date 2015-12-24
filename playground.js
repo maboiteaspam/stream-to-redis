@@ -10,12 +10,12 @@ var s1 = through2.obj();
 s1.resume();
 s1.pipe(redis.write('tomate'));
 
-for (var i=0;i<1000;i++){
-  s1.write("message "+i+"\n")
-}
-
 var s2 = redis.read('tomate');
 s2.pipe(process.stdout)
+
+for (var i=0;i<50;i++){
+  s1.write("message "+i+"\n")
+}
 
 s2.on('end', function () {
   debug('end of read')
