@@ -26,7 +26,7 @@ function fromRedis(name, opts) {
 
     if (hasEnded) return that.push(null);
 
-    queue.getChunk(function (chunks) {
+    queue.getChunk(size, function (chunks) {
       if (chunks===false) {
         if (opts.infinity) qout = setTimeout(next, 500)
         else that.push(null);
@@ -42,6 +42,16 @@ function fromRedis(name, opts) {
 
   var readable = noms(read, before)
 
+  if (opts.secured!==false) {
+    process.on('uncaughtException', function(err) {
+      queue.end() // this is really important that it occurs anyway.
+      // use secured to manage it manually.
+    })
+  }
+  readable.on('error', function () {
+    queue.end()
+  })
+
   readable.on('end', function () {
     queue.end()
   })
@@ -53,18 +63,19 @@ function fromRedis(name, opts) {
 }
 
 
-var allDone = 0;
+var lock = 0;
 var allDoneSoon = function (fn) {
-  allDone++;
+  if (!fn) lock++;
   return function () {
     var args = [].slice.call(arguments);
-    args.push(function(){allDone--;});
-    fn ? fn.apply(null, args) : (allDone--);
+    args.push(function(){!fn && lock--;});
+    fn ? fn.apply(null, args) : (!fn && lock--);
+    return true;
   }
 };
 var waitForAllDoneSoon = function (fn) {
   setTimeout(function (){
-    if (allDone===0) fn()
+    if (lock<=0) fn()
     else waitForAllDoneSoon(fn)
   }, 10)
 }
@@ -90,6 +101,7 @@ function QueueHelper (name, opts) {
     release(function () {
       debug('release done')
       waitForAllDoneSoon(function(){
+        debug('waitForAllDoneSoon')
         client.quit(function () {
           debug('quited')
           client.end()
@@ -102,7 +114,7 @@ function QueueHelper (name, opts) {
   var acquire = function (then) {
     var unlock = allDoneSoon()
     client.sdiff('buckets-'+name, 'buckets-acquired-'+name, function (err, found) {
-      if (!found || !found.length) return then(err, false);
+      if (!found || !found.length) return unlock() && then(err, false);
       var bucket = found.shift();
       client.sadd('buckets-acquired-'+name, bucket, function (err, added) {
         unlock()
@@ -113,6 +125,7 @@ function QueueHelper (name, opts) {
   };
 
   var getBucketData = function (len, then) {
+    var currentData = [];
     var asf = [];
     for( var i=0;i<100;i++) {
       asf.push(function (n) {
@@ -125,14 +138,15 @@ function QueueHelper (name, opts) {
         })
       })
     }
-    async.parallelLimit(asf, 10, then)
+    async.parallelLimit(asf, 500, function (){
+      then(currentData)
+    })
   };
 
   var currentBucket = null;
-  var currentData = [];
 
   var release = function (then) {
-    if (!currentBucket) return then && then()
+    if (!currentBucket) return (then && then())
     debug('releasing %s', currentBucket)
     var unlock = allDoneSoon()
     async.parallel([
@@ -146,23 +160,19 @@ function QueueHelper (name, opts) {
     currentBucket = null;
   }
 
-  this.getChunk = function (done) {
+  this.getChunk = function (size, done) {
     debug('currentBucket %s', currentBucket)
-    debug('currentData.length %s', currentData.length)
-    if (currentData.length) {
-      done(currentData)
-    } else if (currentBucket) {
+    if (currentBucket) {
       if (hasEnded) {
-        debug('currentData.length %s', currentData.length)
         debug('hasEnded %s', hasEnded)
         return release(function () {
           done(false)
         })
       }
-      getBucketData(100, function () {
+      getBucketData(size, function (currentData) {
         if (currentData.length) return done(currentData);
         release(function () {
-          that.getChunk(done)
+          that.getChunk(size, done)
         })
       })
     } else {
@@ -171,7 +181,7 @@ function QueueHelper (name, opts) {
         if (bucket) {
           debug('newBucket %s', bucket)
           currentBucket = bucket;
-          return that.getChunk(done)
+          return that.getChunk(size, done)
         }
         debug('acquire failed')
         done(false)
