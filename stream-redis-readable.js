@@ -7,22 +7,30 @@ var noms = require("noms");
 function fromRedis(name, opts) {
 
   opts = opts || {};
+  debug('opts %j', opts)
 
   var queue;
+  var qout;
+  var hasEnded = true
 
   var before = function (next) {
+    hasEnded = false
     queue = new QueueHelper(name, opts)
     queue.open(next)
   };
 
   var read = function (size, next) {
-    debug('size %j', size)
+    debug('size %j %j', size, hasEnded)
 
     var that = this;
 
+    if (hasEnded) return that.push(null);
+
     queue.getChunk(function (chunks) {
       if (chunks===false) {
-        return opts.infinite ? next() : that.push(null);
+        if (opts.infinity) qout = setTimeout(next, 500)
+        else that.push(null);
+        return ;
       }
       do {
         size--;
@@ -39,14 +47,33 @@ function fromRedis(name, opts) {
   })
 
   readable.end = function (then) {
+    hasEnded = true
     queue.end(then)
   }
   return readable
 }
 
+
+var allDone = 0;
+var allDoneSoon = function (fn) {
+  allDone++;
+  return function () {
+    var args = [].slice.call(arguments);
+    args.push(function(){allDone--;});
+    fn ? fn.apply(null, args) : (allDone--);
+  }
+};
+var withForAllDoneSoon = function (fn) {
+  setTimeout(function (){
+    if (allDone===0) fn()
+    else withForAllDoneSoon(fn)
+  }, 10)
+}
+
 function QueueHelper (name, opts) {
   var that = this
 
+  var hasEnded = true
   var client = redis.createClient(
     opts.port || 6379,
     opts.host || '0.0.0.0',
@@ -55,24 +82,33 @@ function QueueHelper (name, opts) {
     });
 
   that.open = function (n) {
+    hasEnded = false
     client.on('connect', n)
   }
   that.end = function (then) {
-    if (then && client) client.quit(function () {
-      client.end()
-      then()
+    hasEnded = true
+    debug('end')
+    release(function () {
+      debug('release done')
+      withForAllDoneSoon(function(){
+        client.quit(function () {
+          debug('quited')
+          client.end()
+          if (then) then()
+        })
+      })
     })
-    else if(client) client.end()
-    else if(then) then()
-  }
+  };
 
   var acquire = function (then) {
+    var unlock = allDoneSoon()
     client.sdiff('buckets-'+name, 'buckets-acquired-'+name, function (err, found) {
-      if (!found.length) return then(null, false);
+      if (!found || !found.length) return then(err, false);
       var bucket = found.shift();
       client.sadd('buckets-acquired-'+name, bucket, function (err, added) {
-        if (!added) return then(null, false);
-        then(null, bucket);
+        unlock()
+        if (!added) return then(err, false);
+        then(err, bucket);
       })
     })
   };
@@ -81,6 +117,7 @@ function QueueHelper (name, opts) {
     var asf = [];
     for( var i=0;i<100;i++) {
       asf.push(function (n) {
+        if (hasEnded) return n();
         client.rpop('bucket-'+currentBucket, function(err, e) {
           if(e) {
             currentData.push(e);
@@ -97,10 +134,17 @@ function QueueHelper (name, opts) {
   var currentData = [];
 
   var release = function (then) {
+    debug('releasing %s', currentBucket)
+    if (!currentBucket && then) return then()
+    var unlock = allDoneSoon()
     async.parallel([
       function(n){client.srem('buckets-acquired-'+name, currentBucket, n)},
       function(n){client.srem('buckets-'+name, currentBucket, n)}
-    ], then)
+    ], function (err){
+      debug('err %s', err)
+      unlock()
+      if (then) then(err)
+    })
     currentBucket = null;
   }
 
@@ -110,6 +154,13 @@ function QueueHelper (name, opts) {
     if (currentData.length) {
       done(currentData)
     } else if (currentBucket) {
+      if (hasEnded) {
+        debug('currentData.length %s', currentData.length)
+        debug('hasEnded %s', hasEnded)
+        return release(function () {
+          done(false)
+        })
+      }
       getBucketData(100, function () {
         if (currentData.length) return done(currentData);
         release(function () {
@@ -124,7 +175,7 @@ function QueueHelper (name, opts) {
           currentBucket = bucket;
           return that.getChunk(done)
         }
-        debug('end of all')
+        debug('acquire failed')
         done(false)
       })
     }
