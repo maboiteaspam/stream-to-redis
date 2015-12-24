@@ -33,8 +33,9 @@ s2.on('end', function () {
   s1.end();
   //s2.end(); // you may call .end() on a redis-readable to
   // close the connection and end the stream.
-  // if you have not passed infinite: true opt to the stream,
-  // it will close when all data of the channel was processed
+  // if you have not passed infinity: true opt to the stream,
+  // it will close soon.
+  // Infinity should provide a mechanism to sub.
 })
 
 process.on('SIGINT', function() {

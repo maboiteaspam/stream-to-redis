@@ -10,7 +10,7 @@ var s1 = through2.obj();
 s1.resume();
 s1.pipe(redis.write('tomate'));
 
-var s2 = redis.read('tomate', {infinity: !true});
+var s2 = redis.read('tomate', {infinity: true});
 s2.pipe(process.stdout)
 
 var wout;
