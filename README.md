@@ -49,3 +49,5 @@ process.on('SIGINT', function() {
 - http://www.rediscookbook.org/
 - https://github.com/NodeRedis/node_redis
 - https://github.com/jeffbski/redis-wstream
+- https://github.com/calvinmetcalf/noms
+- https://github.com/calvinmetcalf/streams-a-love-story
