@@ -46,9 +46,8 @@ function fromRedis(name, opts) {
     queue.end()
   })
 
-  readable.end = function (then) {
+  readable.end = function () {
     hasEnded = true
-    queue.end(then)
   }
   return readable
 }
@@ -63,10 +62,10 @@ var allDoneSoon = function (fn) {
     fn ? fn.apply(null, args) : (allDone--);
   }
 };
-var withForAllDoneSoon = function (fn) {
+var waitForAllDoneSoon = function (fn) {
   setTimeout(function (){
     if (allDone===0) fn()
-    else withForAllDoneSoon(fn)
+    else waitForAllDoneSoon(fn)
   }, 10)
 }
 
@@ -90,7 +89,7 @@ function QueueHelper (name, opts) {
     debug('end')
     release(function () {
       debug('release done')
-      withForAllDoneSoon(function(){
+      waitForAllDoneSoon(function(){
         client.quit(function () {
           debug('quited')
           client.end()
@@ -126,7 +125,6 @@ function QueueHelper (name, opts) {
         })
       })
     }
-    //async.series(asf, then)
     async.parallelLimit(asf, 10, then)
   };
 
@@ -134,8 +132,8 @@ function QueueHelper (name, opts) {
   var currentData = [];
 
   var release = function (then) {
+    if (!currentBucket) return then && then()
     debug('releasing %s', currentBucket)
-    if (!currentBucket && then) return then()
     var unlock = allDoneSoon()
     async.parallel([
       function(n){client.srem('buckets-acquired-'+name, currentBucket, n)},

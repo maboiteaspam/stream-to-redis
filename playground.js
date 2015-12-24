@@ -55,7 +55,6 @@ process.on('SIGINT', function () {
   debug('SIGINT')
   s1.end()
   debug('s1.end')
-  s2.end(function () {
-    debug('s2.end')
-  })
+  s2.end()
+  debug('s2.end')
 })
